@@ -7,6 +7,7 @@
 #include <string>
 #include <map>
 #include <queue>
+#include <iostream>
 
 using namespace std;
 
@@ -17,6 +18,8 @@ vector<bool> isLogin(max_size, false);
 vector<string> user(max_size, "");
 map<string, string> user2password;
 map< string, map< string, queue<string> > > user2other_user_message;
+vector<string> board_list;
+map<string, string> board2moderator;
 
 fd_set all_set;
 
@@ -150,6 +153,49 @@ void logout(int sockfd){
     return;
 }
 
+bool board_name_exist(string name){
+    for(string exist_name : board_list){
+        if(exist_name == name)
+            return true;
+    }
+
+    return false;
+}
+
+void create_board(int sockfd, const vector<string> &para){
+    if(para.size() != 2){
+        write2cli(sockfd, "Usage: create-board <name>\n");
+        return;
+    }
+
+    if(!isLogin[sockfd]){
+        write2cli(sockfd, "Please login first.\n");
+        return;
+    }
+
+    if(board_name_exist(para[1])){
+        write2cli(sockfd, "Board already exists.\n");
+        return;
+    }
+
+    board_list.push_back(para[1]);
+    board2moderator[para[1]] = user[sockfd];
+    write2cli(sockfd, "Create board successfully.\n");
+    return;
+}
+
+void list_board(int sockfd){
+    write2cli(sockfd, "Index Name Moderator\n");
+    for(int i = 0 ; i < board_list.size() ; i++){
+        snprintf(cli_buff, sizeof(cli_buff), 
+                 "%d %s %s\n", 
+                 i + 1, board_list[i].c_str(), board2moderator[board_list[i]].c_str());   
+        Write(sockfd, cli_buff, strlen(cli_buff));
+    }
+    
+    return;
+}
+
 void bbs_main(int sockfd){
     Read(sockfd, srv_buff, sizeof(srv_buff));
     if(srv_buff[0] != 0){
@@ -164,6 +210,8 @@ void bbs_main(int sockfd){
         if(para[0] == "register") reg(sockfd, para);
         else if(para[0] == "login") login(sockfd, para);
         else if(para[0] == "logout") logout(sockfd);
+        else if(para[0] == "create-board") create_board(sockfd, para);
+        else if(para[0] == "list-board") list_board(sockfd);
     }
 }
 
