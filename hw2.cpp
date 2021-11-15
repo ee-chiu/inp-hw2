@@ -9,8 +9,19 @@
 #include <queue>
 #include <iostream>
 #include <sstream>
+#include <ctime>
+#include <algorithm>
 
 using namespace std;
+
+struct post{   
+    int id;
+    string title;
+    string content;
+    string board;
+    string author;
+    string date;
+};
 
 char cli_buff[10000];
 char srv_buff[10000];
@@ -21,6 +32,8 @@ map<string, string> user2password;
 map< string, map< string, queue<string> > > user2other_user_message;
 vector<string> board_list;
 map<string, string> board2moderator;
+vector<post> post_list;
+int number = 1;
 
 fd_set all_set;
 
@@ -56,7 +69,7 @@ string get_space_para(string command, int &i){
         i++;
     }
 
-    while(para.back() == ' '){
+    while(para.size() > 0 && para.back() == ' '){
         para.pop_back();
     }
 
@@ -69,11 +82,23 @@ void get_create_post_para(string command, int &i, vector<string> &para){
 
     for(int j = 1 ; j <= 2 ; j++){
         string subcommand = get_single_para(command, i);
-        para.push_back(subcommand);
+        if(subcommand.size() > 0)
+            para.push_back(subcommand);
 
         string content = get_space_para(command, i);
-        para.push_back(content);
+        if(content.size() > 0)
+            para.push_back(content);
     }        
+
+    return;
+}
+
+void get_other_para(string command, int &i, vector<string> &para){
+    string tmp;
+    while(command[i] != 0){
+        tmp = get_single_para(command, i);
+        para.push_back(tmp);
+    }
 
     return;
 }
@@ -89,31 +114,7 @@ vector<string> split(string command){
         return para;
     }
 
-    string tmp;
-    while(command[i] != 0){
-        if(command[i] == '"') {
-            i++;
-            break;
-        }
-        if(command[i] == ' '){
-            para.push_back(tmp);
-            tmp.clear();
-            i++;
-            while(command[i] == ' ')
-                i++;
-            continue;
-        }
-        tmp += command[i];
-        i++;
-    }
-
-    while(command[i] != 0 && command[i] != '"'){
-        tmp += command[i];
-        i++;
-    }
-    
-    if(!tmp.empty())
-        para.push_back(tmp);
+    get_other_para(command, i, para);
     return para;
 }
 
@@ -204,15 +205,6 @@ void logout(int sockfd){
     return;
 }
 
-bool board_name_exist(string name){
-    for(string exist_name : board_list){
-        if(exist_name == name)
-            return true;
-    }
-
-    return false;
-}
-
 void create_board(int sockfd, const vector<string> &para){
     if(para.size() != 2){
         write2cli(sockfd, "Usage: create-board <name>\n");
@@ -224,7 +216,7 @@ void create_board(int sockfd, const vector<string> &para){
         return;
     }
 
-    if(board_name_exist(para[1])){
+    if(std::find(board_list.begin(), board_list.end(), para[1]) != board_list.end()){
         write2cli(sockfd, "Board already exists.\n");
         return;
     }
@@ -247,11 +239,131 @@ void list_board(int sockfd){
     return;
 }
 
-void create_post(int sockfd, const vector<string> &para){
-    for(int i = 0 ; i < para.size() ; i++){
-        snprintf(cli_buff, sizeof(cli_buff), "%s\n", para[i].c_str());
-        Write(sockfd, cli_buff, strlen(cli_buff));
+string get_title(const vector<string> &para){
+    for(int i = 0 ; i + 1 < para.size() ; i++){
+        if(para[i] == "--title")
+            return para[i + 1];
     }
+
+    return "";
+}
+
+bool is_br(int i, string content){
+    string br;
+    for(int j = 1 ; j <= 4 ; j++){
+        br += content[i];
+        i++;
+    }
+
+    if(br == "<br>")
+        return true;
+    
+    return false;
+}
+
+string get_content(const vector<string> &para){
+    string content;
+    for(int i = 0 ; i + 1 < para.size() ; i++){
+        if(para[i] == "--content"){
+            content = para[i + 1];    
+            break;
+        }
+    }
+
+    int i = 0; 
+    string tmp;
+    while(i < content.size()){
+        if(content[i] == '<' && is_br(i, content)) {
+            tmp += '\n';
+            i += 4;
+            continue;
+        }
+
+        tmp += content[i];
+        i++;
+    }
+
+    return tmp;
+}
+
+string get_date(){
+    time_t now = time(0);
+    tm *local_time = localtime(&now);
+    int month = 1 + local_time->tm_mon;
+    int day = local_time->tm_mday;
+
+    stringstream ss;
+
+    string month_s;
+    string day_s;
+    string date;
+
+    ss << month;
+    ss >> month_s;
+
+    ss.clear();
+
+    ss << day;
+    ss >> day_s;
+    
+    date = month_s + "/" + day_s;
+
+    return date;
+}
+
+void create_post(int sockfd, const vector<string> &para){
+    if(para.size() != 6){
+        write2cli(sockfd, "Usage: create-post <board-name> --title <title> --content <content>\n");
+        return;
+    }
+
+    if(!isLogin[sockfd]){
+        write2cli(sockfd, "Please login first.\n");
+        return;
+    }
+
+    if(std::find(board_list.begin(), board_list.end(), para[1]) == board_list.end()){
+        write2cli(sockfd, "Board does not exist.\n");
+        return;
+    }
+
+    post p;
+    p.id = number++;
+    p.title = get_title(para);
+    p.content = get_content(para);
+    p.board = para[1];
+    p.author = user[sockfd];
+    p.date = get_date();
+    
+    post_list.push_back(p);
+
+    write2cli(sockfd, "Create post successfully.\n");
+    return;
+}
+
+void list_post(int sockfd, const vector<string> &para){
+    if(para.size() != 2){
+        write2cli(sockfd, "Usage: list-post <board-name>\n");
+        return;
+    }
+
+    if(std::find(board_list.begin(), board_list.end(), para[1]) == board_list.end()){
+        write2cli(sockfd, "Board does not exist.\n");
+        return;
+    }
+
+    write2cli(sockfd, "S/N Title Author Date\n");
+    for(int i = 0 ; i < post_list.size() ; i++){
+        if(post_list[i].board == para[1]){
+            post p = post_list[i];
+            snprintf(cli_buff, sizeof(cli_buff), 
+                    "%d %s %s %s\n", 
+                    p.id, p.title.c_str(), p.author.c_str(), p.date.c_str());
+            Write(sockfd, cli_buff, strlen(cli_buff));
+        }
+    }
+
+    return;
 }
 
 void bbs_main(int sockfd){
@@ -260,6 +372,7 @@ void bbs_main(int sockfd){
         string command(srv_buff);
         command.pop_back();
         vector<string> para = split(command);
+
         if(para[0] == "exit"){
             Exit(sockfd);
             return;
@@ -271,6 +384,7 @@ void bbs_main(int sockfd){
         else if(para[0] == "create-board") create_board(sockfd, para);
         else if(para[0] == "list-board") list_board(sockfd);
         else if(para[0] == "create-post") create_post(sockfd, para);
+        else if(para[0] == "list-post") list_post(sockfd, para);
     }
     write2cli(sockfd, "% ");
 }
