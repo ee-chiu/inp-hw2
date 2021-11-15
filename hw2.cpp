@@ -8,6 +8,7 @@
 #include <map>
 #include <queue>
 #include <iostream>
+#include <sstream>
 
 using namespace std;
 
@@ -35,10 +36,60 @@ int char2int(char* c){
     return num;
 } 
 
+string get_single_para(string command, int &i){
+    string para;
+    while(command[i] != 0 && command[i] != ' '){
+        para += command[i];
+        i++;
+    }    
+
+    while(command[i] == ' ')
+        i++;
+    
+    return para;
+}
+
+string get_space_para(string command, int &i){
+    string para;
+    while(command[i] != 0 && command[i] != '-'){
+        para += command[i];
+        i++;
+    }
+
+    while(para.back() == ' '){
+        para.pop_back();
+    }
+
+    return para;
+}
+
+void get_create_post_para(string command, int &i, vector<string> &para){
+    string board_name = get_single_para(command, i);
+    para.push_back(board_name);
+
+    for(int j = 1 ; j <= 2 ; j++){
+        string subcommand = get_single_para(command, i);
+        para.push_back(subcommand);
+
+        string content = get_space_para(command, i);
+        para.push_back(content);
+    }        
+
+    return;
+}
+
 vector<string> split(string command){
     vector<string> para;
-    string tmp;
     int i = 0;
+    string first_para = get_single_para(command, i);
+    para.push_back(first_para);
+
+    if(first_para == "create-post"){
+        get_create_post_para(command, i, para);
+        return para;
+    }
+
+    string tmp;
     while(command[i] != 0){
         if(command[i] == '"') {
             i++;
@@ -196,6 +247,13 @@ void list_board(int sockfd){
     return;
 }
 
+void create_post(int sockfd, const vector<string> &para){
+    for(int i = 0 ; i < para.size() ; i++){
+        snprintf(cli_buff, sizeof(cli_buff), "%s\n", para[i].c_str());
+        Write(sockfd, cli_buff, strlen(cli_buff));
+    }
+}
+
 void bbs_main(int sockfd){
     Read(sockfd, srv_buff, sizeof(srv_buff));
     if(srv_buff[0] != 0){
@@ -212,7 +270,9 @@ void bbs_main(int sockfd){
         else if(para[0] == "logout") logout(sockfd);
         else if(para[0] == "create-board") create_board(sockfd, para);
         else if(para[0] == "list-board") list_board(sockfd);
+        else if(para[0] == "create-post") create_post(sockfd, para);
     }
+    write2cli(sockfd, "% ");
 }
 
 int main(int argc, char** argv){
@@ -265,6 +325,7 @@ int main(int argc, char** argv){
             FD_SET(connectfd, &all_set);
 
             welcome(connectfd);
+            write2cli(connectfd, "% ");
 
             if(connectfd > maxfd) maxfd = connectfd;
             if(i > maxi) maxi = i;
