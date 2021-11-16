@@ -21,6 +21,7 @@ struct post{
     string board;
     string author;
     string date;
+    vector<string> comments;
 };
 
 char cli_buff[10000];
@@ -76,7 +77,7 @@ string get_space_para(string command, int &i){
     return para;
 }
 
-void get_create_post_para(string command, int &i, vector<string> &para){
+void get_create_post_para(string command, int i, vector<string> &para){
     string board_name = get_single_para(command, i);
     para.push_back(board_name);
 
@@ -89,6 +90,16 @@ void get_create_post_para(string command, int &i, vector<string> &para){
         if(content.size() > 0)
             para.push_back(content);
     }        
+
+    return;
+}
+
+void get_comment_para(string command, int i, vector<string> &para){
+    string id = get_single_para(command, i);
+    para.push_back(id);
+
+    string comment = get_space_para(command, i);
+    para.push_back(comment);
 
     return;
 }
@@ -111,6 +122,15 @@ vector<string> split(string command){
 
     if(first_para == "create-post"){
         get_create_post_para(command, i, para);
+        return para;
+    }
+
+    if(first_para == "update-post"){
+        ;
+    }
+
+    if(first_para == "comment"){
+        get_comment_para(command, i, para);
         return para;
     }
 
@@ -401,22 +421,81 @@ void read_post(int sockfd, const vector<string> &para){
         return;
     }
 
-    snprintf(cli_buff, sizeof(cli_buff), "Author: %s\n", num2post[id].author.c_str());
+    post p = num2post[id];
+    snprintf(cli_buff, sizeof(cli_buff), "Author: %s\n", p.author.c_str());
     Write(sockfd, cli_buff, strlen(cli_buff));
 
-    snprintf(cli_buff, sizeof(cli_buff), "Title: %s\n", num2post[id].title.c_str());
+    snprintf(cli_buff, sizeof(cli_buff), "Title: %s\n", p.title.c_str());
     Write(sockfd, cli_buff, strlen(cli_buff));
 
-    snprintf(cli_buff, sizeof(cli_buff), "Date: %s\n", num2post[id].date.c_str());
-    Write(sockfd, cli_buff, strlen(cli_buff));
-
-    write2cli(sockfd, "--\n");
-
-    snprintf(cli_buff, sizeof(cli_buff), "%s\n", num2post[id].content.c_str());
+    snprintf(cli_buff, sizeof(cli_buff), "Date: %s\n", p.date.c_str());
     Write(sockfd, cli_buff, strlen(cli_buff));
 
     write2cli(sockfd, "--\n");
 
+    snprintf(cli_buff, sizeof(cli_buff), "%s\n", p.content.c_str());
+    Write(sockfd, cli_buff, strlen(cli_buff));
+
+    write2cli(sockfd, "--\n");
+
+    for(int i = 0 ; i < p.comments.size() ; i++){
+        snprintf(cli_buff, sizeof(cli_buff), "%s\n", p.comments[i].c_str());
+        Write(sockfd, cli_buff, strlen(cli_buff));
+    }
+
+    return;
+}
+
+void delete_post(int sockfd, const vector<string> &para){
+    if(para.size() != 2){
+        write2cli(sockfd, "Usage: delete-post <post-S/N>\n");
+        return;
+    }
+
+    if(!isLogin[sockfd]){
+        write2cli(sockfd, "Please login first.\n");
+        return;
+    }
+
+    int id = str2int(para[1]);
+    if(num2post.find(id) == num2post.end()){
+        write2cli(sockfd, "Post does not exist.\n");
+        return;
+    }
+
+    if(user[sockfd] != num2post[id].author){
+        write2cli(sockfd, "Not the post owner.\n");
+        return;
+    }
+
+    num2post.erase(id);
+    write2cli(sockfd, "Delete successfully.\n");
+
+    return;
+}
+
+void comment(int sockfd, const vector<string> &para){
+    if(para.size() != 3){
+        write2cli(sockfd, "Usage: comment <post-S/N> <comment>\n");
+        return;
+    }
+
+    if(!isLogin[sockfd]){
+        write2cli(sockfd, "Please login first.\n");
+        return;
+    }
+
+    int id = str2int(para[1]);
+    if(num2post.find(id) == num2post.end()){
+        write2cli(sockfd, "Post does not exist.\n");
+        return;
+    }
+
+    string this_comment = user[sockfd] + ": " + para[2];
+    num2post[id].comments.push_back(this_comment);
+
+    write2cli(sockfd, "Comment successfully.\n");
+    return;
 }
 
 void bbs_main(int sockfd){
@@ -439,7 +518,9 @@ void bbs_main(int sockfd){
         else if(para[0] == "create-post") create_post(sockfd, para);
         else if(para[0] == "list-post") list_post(sockfd, para);
         else if(para[0] == "read") read_post(sockfd, para);
-        
+        else if(para[0] == "delete-post") delete_post(sockfd, para);
+        else if(para[0] == "comment") comment(sockfd, para);
+
     }
     write2cli(sockfd, "% ");
 }
