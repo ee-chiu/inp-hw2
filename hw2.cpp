@@ -32,7 +32,7 @@ map<string, string> user2password;
 map< string, map< string, queue<string> > > user2other_user_message;
 vector<string> board_list;
 map<string, string> board2moderator;
-vector<post> post_list;
+map<int, post> num2post;
 int number = 1;
 
 fd_set all_set;
@@ -328,14 +328,17 @@ void create_post(int sockfd, const vector<string> &para){
     }
 
     post p;
-    p.id = number++;
+    p.id = number;
     p.title = get_title(para);
     p.content = get_content(para);
     p.board = para[1];
     p.author = user[sockfd];
     p.date = get_date();
     
-    post_list.push_back(p);
+    num2post[number] = p;
+    
+    number++;
+    //post_list.push_back(p);
 
     write2cli(sockfd, "Create post successfully.\n");
     return;
@@ -353,7 +356,16 @@ void list_post(int sockfd, const vector<string> &para){
     }
 
     write2cli(sockfd, "S/N Title Author Date\n");
-    for(int i = 0 ; i < post_list.size() ; i++){
+    for(map<int, post>::iterator it = num2post.begin() ; it != num2post.end() ; it++){
+        post p = it -> second; 
+        if(p.board == para[1]){
+            snprintf(cli_buff, sizeof(cli_buff), 
+                    "%d %s %s %s\n", 
+                    it -> first, p.title.c_str(), p.author.c_str(), p.date.c_str());
+            Write(sockfd, cli_buff, strlen(cli_buff));
+        }
+    }
+    /*for(int i = 0 ; i < post_list.size() ; i++){
         if(post_list[i].board == para[1]){
             post p = post_list[i];
             snprintf(cli_buff, sizeof(cli_buff), 
@@ -361,9 +373,50 @@ void list_post(int sockfd, const vector<string> &para){
                     p.id, p.title.c_str(), p.author.c_str(), p.date.c_str());
             Write(sockfd, cli_buff, strlen(cli_buff));
         }
-    }
+    }*/
 
     return;
+}
+
+int str2int(string s){
+    int i = 0;
+    int num = 0;
+    while(i < s.size()){
+        num = num * 10 + s[i] - '0';
+        i++;
+    }
+
+    return num;
+}
+
+void read_post(int sockfd, const vector<string> &para){
+    if(para.size() != 2){
+        write2cli(sockfd, "Usage: read <post-S/N>\n");
+        return;
+    }
+
+    int id = str2int(para[1]);
+    if(num2post.find(id) == num2post.end()){
+        write2cli(sockfd, "Post does not exist.\n");
+        return;
+    }
+
+    snprintf(cli_buff, sizeof(cli_buff), "Author: %s\n", num2post[id].author.c_str());
+    Write(sockfd, cli_buff, strlen(cli_buff));
+
+    snprintf(cli_buff, sizeof(cli_buff), "Title: %s\n", num2post[id].title.c_str());
+    Write(sockfd, cli_buff, strlen(cli_buff));
+
+    snprintf(cli_buff, sizeof(cli_buff), "Date: %s\n", num2post[id].date.c_str());
+    Write(sockfd, cli_buff, strlen(cli_buff));
+
+    write2cli(sockfd, "--\n");
+
+    snprintf(cli_buff, sizeof(cli_buff), "%s\n", num2post[id].content.c_str());
+    Write(sockfd, cli_buff, strlen(cli_buff));
+
+    write2cli(sockfd, "--\n");
+
 }
 
 void bbs_main(int sockfd){
@@ -385,6 +438,8 @@ void bbs_main(int sockfd){
         else if(para[0] == "list-board") list_board(sockfd);
         else if(para[0] == "create-post") create_post(sockfd, para);
         else if(para[0] == "list-post") list_post(sockfd, para);
+        else if(para[0] == "read") read_post(sockfd, para);
+        
     }
     write2cli(sockfd, "% ");
 }
