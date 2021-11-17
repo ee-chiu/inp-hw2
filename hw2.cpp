@@ -79,17 +79,36 @@ string get_space_para(string command, int &i){
 
 void get_create_post_para(string command, int i, vector<string> &para){
     string board_name = get_single_para(command, i);
+    if(board_name.substr(0, 2) == "--") return;
     para.push_back(board_name);
 
     for(int j = 1 ; j <= 2 ; j++){
         string subcommand = get_single_para(command, i);
+        if(subcommand.substr(0, 2) != "--") return;
         if(subcommand.size() > 0)
             para.push_back(subcommand);
 
         string content = get_space_para(command, i);
+        if(content.substr(0, 2) == "--") return;
         if(content.size() > 0)
             para.push_back(content);
     }        
+
+    return;
+}
+
+void get_update_post_para(string command, int i, vector<string> &para){
+    string id = get_single_para(command, i);
+    if(id.substr(0, 2) == "--") return;
+    para.push_back(id);
+
+    string title_content = get_single_para(command, i);
+    if(title_content.substr(0, 2) != "--") return;
+    para.push_back(title_content);
+
+    string new_ = get_space_para(command, i);
+    if(new_.size() > 0)
+        para.push_back(new_);
 
     return;
 }
@@ -126,7 +145,8 @@ vector<string> split(string command){
     }
 
     if(first_para == "update-post"){
-        ;
+        get_update_post_para(command, i, para);
+        return para;
     }
 
     if(first_para == "comment"){
@@ -265,7 +285,7 @@ string get_title(const vector<string> &para){
             return para[i + 1];
     }
 
-    return "";
+    return "error";
 }
 
 bool is_br(int i, string content){
@@ -358,7 +378,6 @@ void create_post(int sockfd, const vector<string> &para){
     num2post[number] = p;
     
     number++;
-    //post_list.push_back(p);
 
     write2cli(sockfd, "Create post successfully.\n");
     return;
@@ -474,6 +493,41 @@ void delete_post(int sockfd, const vector<string> &para){
     return;
 }
 
+void update_post(int sockfd, const vector<string> &para){
+    if(para.size() != 4){
+        write2cli(sockfd, "Usage: update-post <post-S/N> --title/content <new>\n");
+        return;
+    }
+
+    if(!isLogin[sockfd]){
+        write2cli(sockfd, "Please login first.\n");
+        return;
+    }
+
+    int id = str2int(para[1]);
+    if(num2post.find(id) == num2post.end()){
+        write2cli(sockfd, "Post does not exist.\n");
+        return;
+    }
+
+    if(user[sockfd] != num2post[id].author){
+        write2cli(sockfd, "Not the post owner.\n");
+        return;
+    }
+
+    if(para[2] == "--title"){
+        num2post[id].title = para[3];
+        write2cli(sockfd, "Update successfully.\n");
+    }
+
+    else if(para[2] == "--content"){
+        num2post[id].content = get_content(para);
+        write2cli(sockfd, "Update successfully.\n");
+    }
+
+    return;
+}
+
 void comment(int sockfd, const vector<string> &para){
     if(para.size() != 3){
         write2cli(sockfd, "Usage: comment <post-S/N> <comment>\n");
@@ -519,6 +573,7 @@ void bbs_main(int sockfd){
         else if(para[0] == "list-post") list_post(sockfd, para);
         else if(para[0] == "read") read_post(sockfd, para);
         else if(para[0] == "delete-post") delete_post(sockfd, para);
+        else if(para[0] == "update-post") update_post(sockfd, para);
         else if(para[0] == "comment") comment(sockfd, para);
 
     }
